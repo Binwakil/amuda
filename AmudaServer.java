@@ -1,8 +1,7 @@
+
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
 import java.nio.ByteBuffer;
 
 public class AmudaServer {
@@ -46,7 +45,8 @@ public class AmudaServer {
         @Override
         public void run() {
             try {
-                URL url = new URL(webServer);
+                URI uri = new URI(webServer);
+                URL url = uri.toURL();
                 HttpURLConnection connection = (HttpURLConnection) url.openConnection();
                 connection.setRequestMethod("GET");
                 InputStream inputStream = connection.getInputStream();
@@ -71,17 +71,27 @@ public class AmudaServer {
                 int start = i * PACKET_SIZE;
                 int end = Math.min(start + PACKET_SIZE, webData.length);
                 int payloadSize = end - start;
-                byte[] payload = new byte[payloadSize + 12];
-                System.arraycopy(webData, start, payload, 12, payloadSize);
-                ByteBuffer.wrap(payload, 0, 4).putInt(i);
-                ByteBuffer.wrap(payload, 4, 4).putInt(totalPackets);
-                ByteBuffer.wrap(payload, 8, 4).putInt(payloadSize);
+                byte[] packetData = new byte[12 + payloadSize];
+                ByteBuffer.wrap(packetData, 0, 4).putInt(i);
+                ByteBuffer.wrap(packetData, 4, 4).putInt(totalPackets);
+                ByteBuffer.wrap(packetData, 8, 4).putInt(payloadSize);
+                System.arraycopy(webData, start, packetData, 12, payloadSize);
 
-                DatagramPacket packet = new DatagramPacket(payload, payload.length, clientAddress, clientPort);
+                DatagramPacket packet = new DatagramPacket(packetData, packetData.length, clientAddress, clientPort);
                 socket.send(packet);
             }
 
-            // Implement ACK receiving and timeout here
-        }
+            // Wait for ACK or timeout
+                try {
+                    byte[] ackBuffer = new byte[10];  // ACK buffer
+                    DatagramPacket ackPacket = new DatagramPacket(ackBuffer, ackBuffer.length);
+                    socket.setSoTimeout(timeout * 1000);  // Set the timeout
+                    socket.receive(ackPacket);
+                    System.out.println("DONE");
+                } catch (SocketTimeoutException e) {
+                    System.out.println("RESENT");  // If timeout, retransmit
+                    sendPackets(webData);  // Retransmit data
+                }
+            }
     }
 }
